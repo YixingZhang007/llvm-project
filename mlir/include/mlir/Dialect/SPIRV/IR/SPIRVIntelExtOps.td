@@ -138,7 +138,7 @@ def SPIRV_INTELRoundFToTF32Op : SPIRV_IntelVendorOp<"RoundFToTF32", []> {
     MinVersion<SPIRV_V_1_0>,
     MaxVersion<SPIRV_V_1_6>,
     Extension<[SPV_INTEL_tensor_float32_conversion]>,
-    Capability<[SPIRV_C_tensor_float32_conversion]>
+    Capability<[SPIRV_C_TensorFloat32RoundingINTEL]>
   ];
 
   let arguments = (ins

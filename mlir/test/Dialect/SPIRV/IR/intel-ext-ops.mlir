@@ -30,7 +30,7 @@ spirv.func @f32_to_tf32_unsupported(%arg0 : f64) "None" {
 
 spirv.func @f32_to_tf32_vec_unsupported(%arg0 : vector<2xf32>) "None" {
   // expected-error @+1 {{operand and result must have same number of elements}}
-  %0 = spirv.INTEL.RoundFToTF32 %arg0 : vector<2xf32> to vector<2xf32>
+  %0 = spirv.INTEL.RoundFToTF32 %arg0 : vector<2xf32> to vector<4xf32>
   spirv.Return
 }
 
