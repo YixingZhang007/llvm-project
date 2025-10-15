@@ -3013,6 +3013,38 @@ bool SPIRVEmitIntrinsics::runOnModule(Module &M) {
   parseFunDeclarations(M);
   insertConstantsForFPFastMathDefault(M);
 
+  // Check if module has global variables but no functions
+  bool hasGlobals = false;
+  bool hasFunctions = false;
+  
+  for (auto &GV : M.globals()) {
+    if (!GV.isDeclaration()) {
+      hasGlobals = true;
+      break;
+    }
+  }
+
+  for (auto &F : M) {
+    if (!F.isDeclaration() && !F.isIntrinsic()) {
+      hasFunctions = true;
+      break;
+    }
+  }
+
+  // Create temporary function if we have globals but no functions
+  Function *tmpFunc = nullptr;
+  if (hasGlobals && !hasFunctions) {
+    LLVMContext &Ctx = M.getContext();
+    FunctionType *FT = FunctionType::get(Type::getVoidTy(Ctx), false);
+    tmpFunc = Function::Create(FT, Function::InternalLinkage, "tmp", &M);
+    
+    BasicBlock *BB = BasicBlock::Create(Ctx, "entry", tmpFunc);
+    IRBuilder<> Builder(BB);
+    Builder.CreateRetVoid();
+    
+    Changed = true;
+  }
+
   TodoType.clear();
   for (auto &F : M)
     Changed |= runOnFunction(F);

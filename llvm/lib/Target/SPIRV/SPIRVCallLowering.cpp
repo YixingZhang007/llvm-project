@@ -438,14 +438,17 @@ bool SPIRVCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
       FTy, RetTy, ArgTypeVRegs, MIRBuilder);
   uint32_t FuncControl = getFunctionControl(F, ST);
 
+  MachineInstrBuilder MB;
   // Add OpFunction instruction
-  MachineInstrBuilder MB = MIRBuilder.buildInstr(SPIRV::OpFunction)
-                               .addDef(FuncVReg)
-                               .addUse(GR->getSPIRVTypeID(RetTy))
-                               .addImm(FuncControl)
-                               .addUse(GR->getSPIRVTypeID(FuncTy));
+  if (F.getName() != "tmp") {
+  MB = MIRBuilder.buildInstr(SPIRV::OpFunction)
+                                .addDef(FuncVReg)
+                                .addUse(GR->getSPIRVTypeID(RetTy))
+                                .addImm(FuncControl)
+                                .addUse(GR->getSPIRVTypeID(FuncTy));
   GR->recordFunctionDefinition(&F, &MB.getInstr()->getOperand(0));
   GR->addGlobalObject(&F, &MIRBuilder.getMF(), FuncVReg);
+  }
   if (F.isDeclaration())
     GR->add(&F, MB);
 
@@ -461,7 +464,7 @@ bool SPIRVCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
                    .addUse(GR->getSPIRVTypeID(ArgTypeVRegs[i]));
     if (F.isDeclaration())
       GR->add(&Arg, MIB);
-    GR->addGlobalObject(&Arg, &MIRBuilder.getMF(), ArgReg);
+    // GR->addGlobalObject(&Arg, &MIRBuilder.getMF(), ArgReg);
     i++;
   }
   // Name the function.
