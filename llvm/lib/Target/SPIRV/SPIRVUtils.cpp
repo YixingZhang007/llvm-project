@@ -27,6 +27,8 @@
 #include <queue>
 #include <vector>
 
+#define DEBUG_TYPE "spirvutil"
+
 namespace llvm {
 
 // The following functions are used to add these string literals as a series of
@@ -261,10 +263,12 @@ addressSpaceToStorageClass(unsigned AddrSpace, const SPIRVSubtarget &STI) {
   case 0:
     return SPIRV::StorageClass::Function;
   case 1:
+    LLVM_DEBUG(dbgs() << "Found address space 1 -> Address space 1 maps to SPIR-V CrossWorkgroup\n");
     return SPIRV::StorageClass::CrossWorkgroup;
   case 2:
     return SPIRV::StorageClass::UniformConstant;
   case 3:
+    LLVM_DEBUG(dbgs() << "Found address space 3 -> Address space 3 maps to SPIR-V Workgroup\n");
     return SPIRV::StorageClass::Workgroup;
   case 4:
     return SPIRV::StorageClass::Generic;

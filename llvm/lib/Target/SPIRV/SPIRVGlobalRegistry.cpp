@@ -30,6 +30,8 @@
 #include <cassert>
 #include <functional>
 
+#define DEBUG_TYPE "spirv_global_registry"
+
 using namespace llvm;
 
 static bool allowEmitFakeUse(const Value *Arg) {
@@ -715,6 +717,7 @@ Register SPIRVGlobalRegistry::buildGlobalVariable(
     const MachineInstr *Init, bool IsConst, bool HasLinkageTy,
     SPIRV::LinkageType::LinkageType LinkageType, MachineIRBuilder &MIRBuilder,
     bool IsInstSelector) {
+  LLVM_DEBUG(dbgs() << "buildGlobalVariable: Building global variable: " << Name << "\n");
   const GlobalVariable *GVar = nullptr;
   if (GV) {
     GVar = cast<const GlobalVariable>(GV);

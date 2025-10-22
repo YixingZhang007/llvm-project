@@ -29,6 +29,8 @@
 #include <queue>
 #include <unordered_set>
 
+#define DEBUG_TYPE "emit_intrinsics"
+
 // This pass performs the following transformation on LLVM IR level required
 // for the following translation to SPIR-V:
 // - replaces direct usages of aggregate constants with target-specific
@@ -3007,6 +3009,63 @@ void SPIRVEmitIntrinsics::parseFunDeclarations(Module &M) {
   }
 }
 
+void InsertGlobalVariable(Module &M) {
+  // Create a clone of each global variable that has the default address space.
+  // The clone is created with the global address space specifier, and the pair
+  // of original global variable and its clone is placed in the GVMap for later
+  // use.
+  llvm::DenseMap<llvm::GlobalVariable*, llvm::GlobalVariable*> GVMap;
+  for (GlobalVariable &GV : llvm::make_early_inc_range(M.globals())) {
+    LLVM_DEBUG(dbgs() <<  "InsertGlobalVariable:  found global variable, trying to generate a new one with global address space " << GV.getName() << "\n");
+    unsigned GlobalAddrSpace = 1;
+    GlobalVariable *NewGV = new GlobalVariable(
+          M, GV.getValueType(), GV.isConstant(), GV.getLinkage(),
+          GV.hasInitializer() ? GV.getInitializer() : nullptr, "", &GV,
+          GV.getThreadLocalMode(), GlobalAddrSpace);
+    NewGV->copyAttributesFrom(&GV);
+    NewGV->copyMetadata(&GV, /*Offset=*/0);
+    GVMap[&GV] = NewGV;    
+  }
+
+  // Return immediately, if every global variable has a specific address space
+  // specifier.
+  if (GVMap.empty()) {
+    LLVM_DEBUG(dbgs() <<  "InsertGlobalVariable:  no global variable has been transformed\n");
+    return;
+  }
+
+  // Copy GVMap over to a standard value map.
+  ValueToValueMapTy VM;
+  for (auto I = GVMap.begin(), E = GVMap.end(); I != E; ++I)
+    VM[I->first] = I->second;
+  LLVM_DEBUG(dbgs() <<  "InsertGlobalVariable:  Finished copying GVMap over to a standard value map\n");
+
+  // Walk through the global variable  initializers, and replace any use of
+  // original global variables in GVMap with a use of the corresponding copies
+  // in GVMap.  The copies need to be bitcast to the original global variable
+  // types, as we cannot use cvta in global variable initializers.
+  for (auto I = GVMap.begin(), E = GVMap.end(); I != E;) {
+    GlobalVariable *GV = I->first;
+    GlobalVariable *NewGV = I->second;
+    LLVM_DEBUG(dbgs() <<  "InsertGlobalVariable:  found global variable " << GV->getName() << ", replacing with " << NewGV->getName() << "\n");
+
+    // Remove GV from the map so that it can be RAUWed.  Note that
+    // DenseMap::erase() won't invalidate any iterators but this one.
+    auto Next = std::next(I);
+    GVMap.erase(I);
+    I = Next;
+
+    Constant *BitCastNewGV = ConstantExpr::getPointerCast(NewGV, GV->getType());
+    // At this point, the remaining uses of GV should be found only in global
+    // variable initializers, as other uses have been already been removed
+    // while walking through the instructions in function definitions.
+    GV->replaceAllUsesWith(BitCastNewGV);
+    std::string Name = std::string(GV->getName());
+    GV->eraseFromParent();
+    NewGV->setName(Name);
+  }
+}
+
 bool SPIRVEmitIntrinsics::runOnModule(Module &M) {
   bool Changed = false;
 
@@ -3019,6 +3078,7 @@ bool SPIRVEmitIntrinsics::runOnModule(Module &M) {
   
   for (auto &GV : M.globals()) {
     if (!GV.isDeclaration()) {
+      LLVM_DEBUG(dbgs() <<  "there are globals in the module: " << GV.getName() << "\n");
       hasGlobals = true;
       break;
     }
@@ -3026,23 +3086,24 @@ bool SPIRVEmitIntrinsics::runOnModule(Module &M) {
 
   for (auto &F : M) {
     if (!F.isDeclaration() && !F.isIntrinsic()) {
+      LLVM_DEBUG(dbgs() <<  "there are functions in the module: " << F.getName() << "\n");
       hasFunctions = true;
       break;
     }
   }
 
-  // Create temporary function if we have globals but no functions
-  Function *tmpFunc = nullptr;
   if (hasGlobals && !hasFunctions) {
-    LLVMContext &Ctx = M.getContext();
-    FunctionType *FT = FunctionType::get(Type::getVoidTy(Ctx), false);
-    tmpFunc = Function::Create(FT, Function::InternalLinkage, "tmp", &M);
-    
-    BasicBlock *BB = BasicBlock::Create(Ctx, "entry", tmpFunc);
-    IRBuilder<> Builder(BB);
-    Builder.CreateRetVoid();
-    
-    Changed = true;
+    LLVM_DEBUG(dbgs() <<  "no function but there are globals in the module\n");
+    // Change internal linkage global variables to external linkage
+    for (auto &GV : M.globals()) {
+      if (GV.hasInternalLinkage()) {
+        LLVM_DEBUG(dbgs() <<  "global variable has internal linkage " << GV.getName() << "\n");
+      } else if (GV.hasExternalLinkage()) {
+        LLVM_DEBUG(dbgs() <<  "global variable has external linkage " << GV.getName() << "\n");
+      }
+    }
+    InsertGlobalVariable(M);
+    return true;
   }
 
   TodoType.clear();
